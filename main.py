@@ -1,12 +1,21 @@
 
-import dotenv
-dotenv.load_dotenv()  # noqa
-
-import llm
-import authentication
-import streamlit as st
-import sys
 import logging
+import os
+import sys
+import streamlit as st
+import dotenv
+
+from authentication import get_auth_url, nav_to
+from menu import authenticated_menu
+sys.path.append(os.path.join(
+    os.path.dirname(os.path.realpath(__file__)),
+    os.pardir, os.pardir
+))
+dotenv_path = os.path.join(
+    os.path.dirname(os.path.realpath(__file__)),
+    os.pardir, os.pardir, '.env'
+)
+dotenv.load_dotenv()  # noqa
 
 
 logging.basicConfig(
@@ -15,44 +24,36 @@ logging.basicConfig(
 logging.getLogger().addHandler(logging.StreamHandler(stream=sys.stdout))
 
 
-
 def app():
-    setup_authentication()
 
-    files = st.file_uploader("Upload a file", type=[
-        "pdf"], accept_multiple_files=True)
-    if files is not None:
-        from pypdf import PdfReader
-
-        for file in files:
-            pdf_reader = PdfReader(file)
-            full_text = '\n'.join([page.extract_text()
-                                   for page in pdf_reader.pages])
-            st.write(full_text)
-            metadata = {'filename': file.name,
-                        'user': st.session_state['user_info']['mail']}
-            llm.insert_index(full_text, metadata_fields=metadata)
-
-    query = st.text_input("Enter your search query")
-    search_button = st.button("Search")
-    if search_button:
-        response = llm.full_text_search(query)
-        st.write(response)
-
-
-def setup_authentication():
+    from authentication import get_user_info, handle_redirect
     if 'code' in st.query_params:
-        authentication.handle_redirect()
-
-    access_token = st.session_state.get('access_token')
-    if not access_token:
-        auth_url = authentication.get_auth_url()
-        st.link_button("Log in with Microsoft", auth_url)
-        st.stop()
+        handle_redirect()
+    user_info = get_user_info(redirect_login=False)
+    if user_info:
+        render_app(user_info)
     else:
-        user_info = authentication.get_user_info(access_token)
-        st.session_state['user_info'] = user_info
-    st.write(st.session_state)
+        with st.sidebar:
+            st.header("Login")
+        st.markdown("# Welcome to Nexus!  \n Please login to continue.")
+        if st.button("Login with Microsoft"):
+            auth_url = get_auth_url()
+            nav_to(auth_url)
+
+
+def render_app(user_info):
+    authenticated_menu()
+
+    st.markdown(f'## Hi {user_info['displayName']}')
+    st.markdown("Welcome to Nexus, the intelligent search platform that goes beyond keywords to unlock a world of interconnected knowledge.")
+    st.markdown("To get started, upload PDF files to build your personal knowledge. You can search across all your uploaded files or chat with your personal library.")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("Upload PDF"):
+            st.switch_page("pages/build_library.py")
+    with col2:
+        if st.button("Search"):
+            st.switch_page("pages/search.py")
 
 
 app()
